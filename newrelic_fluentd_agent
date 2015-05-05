@@ -1,0 +1,73 @@
+#! /usr/bin/env ruby
+
+require "rubygems"
+require "bundler/setup"
+require "dante"
+require "newrelic_plugin"
+require "net/http"
+require "json"
+
+pid_path = "/tmp/newrelic_fluentd_agent.pid"
+log_path = "/tmp/newrelic_fluentd_agent.log"
+
+runner = Dante::Runner.new('newrelic_fluentd_agent', :pid_path  => pid_path, :log_path => log_path)
+runner.description = 'New Relic plugin agent for Fluentd'
+runner.with_options do |opts|
+  opts.on('-c', '--config FILE', String, 'Specify configuration file') do |config|
+    options[:config_path] = config
+  end
+end
+
+runner.execute do |opts|
+  $fluentd_config_path = opts[:config_path]
+
+  module FluentdAgent
+
+    class Agent < NewRelic::Plugin::Agent::Base
+
+      agent_guid "com.faizalzakaria.newrelic_fluentd_plugin"
+      agent_version "1.0.0"
+      agent_config_options :name, :url
+      agent_human_labels('Fluentd Agent') { name }
+
+      def setup_metrics
+        @config = {}
+        uri = URI.parse(url)
+        @config[:host] = uri.host
+        @config[:port] = uri.port
+        @config[:request_uri] = uri.request_uri
+        @config[:metrics] = [ 'buffer_queue_length', 'buffer_total_queued_size', 'retry_count' ]
+      end
+
+      def poll_cycle
+        begin
+          result = acquire_resource
+        rescue
+          puts 'failed to acquire resource'
+        end
+
+        result['plugins'].each do |plugin|
+          @config[:metrics].each do |metric|
+            next if plugin[metric].nil?
+            report_metric "#{metric}/#{plugin['plugin_id']}", "Value", plugin[metric]
+          end
+        end
+      end
+
+      private
+
+      def acquire_resource
+        http = Net::HTTP.new(@config[:host], @config[:port])
+        response = http.get(@config[:request_uri])
+        result = JSON.parse(response.body)
+        result
+      end
+
+    end
+
+    NewRelic::Plugin::Config.config_file = $fluentd_config_path if $fluentd_config_path
+    NewRelic::Plugin::Setup.install_agent :fluentd, FluentdAgent
+    NewRelic::Plugin::Run.setup_and_run
+
+  end
+end
