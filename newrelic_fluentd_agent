@@ -27,8 +27,16 @@ runner.execute do |opts|
 
       agent_guid "com.faizalzakaria.newrelic_fluentd_plugin"
       agent_version "1.0.0"
-      agent_config_options :name, :url
-      agent_human_labels('Fluentd Agent') { name }
+      agent_config_options :instance_name, :url
+      agent_human_labels('FluentD Agent') do
+        if instance_name == nil
+          host = Socket.gethostname().sub(/\..*/, '')
+          uri = URI.parse("#{url}")
+          "#{host}:#{uri.port}"
+        else
+          "#{instance_name}"
+        end
+      end
 
       def setup_metrics
         @config = {}

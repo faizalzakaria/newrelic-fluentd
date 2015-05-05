@@ -26,5 +26,5 @@ newrelic:
 agents:
   # this is where configuration for agents belongs
   fluentd:
-    name: 'Fluentd Service'
+    instance_name: 'Fluentd Service'
     url: 'http://localhost:24220/api/plugins.json'
